@@ -8,13 +8,16 @@ import {
   Menu, 
   LogOut,
   UserPlus,
-  Users
+  Users,
+  Server,
+  Pencil 
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import AddAccountModal from './AddAccountModal';
 import ComposeModal from './ComposeModal';
 import toast from 'react-hot-toast';
 import { User, Email, DashboardStats } from '@/app/types';
+import SmtpModal from './SmtpModal';
 
 export default function Dashboard() {
   const router = useRouter();
@@ -28,41 +31,41 @@ export default function Dashboard() {
   const [users, setUsers] = useState<User[]>([]);
   const [trashEmails, setTrashEmails] = useState<Email[]>([]);
   const [user, setUser] = useState<User | null>(null);
+  const [isSmtpModalOpen, setIsSmtpModalOpen] = useState(false);
+  const [smtpCredentials, setSmtpCredentials] = useState({
+    emailUser: '',
+    emailPass: ''
+  });
+  const [isEditing, setIsEditing] = useState(false);
 
-  // Fetch all data on component mount
   useEffect(() => {
     const fetchData = async () => {
       try {
         setIsLoading(true);
         
-        // Fetch user details
         const userRes = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/auth/me`, {
           credentials: 'include'
         });
         const userData = await userRes.json();
         setUser(userData);
 
-        // Fetch dashboard stats
         const statsRes = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/dashboard/stats`);
         const statsData = await statsRes.json();
         setStats(statsData);
 
-        // Fetch emails
         const emailsRes = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/email/history?status=sent`);
         const emailsData = await emailsRes.json();
         setEmails(emailsData.data || emailsData || []);
         
-
         const trashRes = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/email/history?status=trash`);
         const trashData = await trashRes.json();
         setTrashEmails(trashData.data || trashData || []);
         
-
-        // Fetch users (if admin)
         const usersRes = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/users`);
         const usersData = await usersRes.json();
         setUsers(usersData.data || usersData || []);
 
+        await fetchSmtpCredentials();
       } catch (error) {
         console.error('Failed to fetch data:', error);
         toast.error('Failed to load dashboard data');
@@ -73,6 +76,51 @@ export default function Dashboard() {
 
     fetchData();
   }, []);
+
+  const fetchSmtpCredentials = async () => {
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/email/credentials`, {
+        credentials: 'include'
+      });
+      const data = await response.json();
+      if (response.ok && data.settings) {
+        setSmtpCredentials({
+          emailUser: data.settings.emailUser,
+          emailPass: '••••••••'
+        });
+      }
+    } catch (error) {
+      console.error('Failed to fetch SMTP credentials:', error);
+      toast.error('Failed to load SMTP settings');
+    }
+  };
+  
+  const handleUpdateSmtpCredentials = async () => {
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/email/credentials`, {
+        method: 'PUT',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          emailUser: smtpCredentials.emailUser,
+          emailPass: smtpCredentials.emailPass === '••••••••' ? undefined : smtpCredentials.emailPass
+        })
+      });
+  
+      if (response.ok) {
+        toast.success('SMTP credentials updated successfully');
+        setIsEditing(false);
+        await fetchSmtpCredentials();
+      } else {
+        throw new Error('Failed to update credentials');
+      }
+    } catch (error: any) {
+      console.error('Update failed:', error);
+      toast.error(error.message || 'Failed to update SMTP credentials');
+    }
+  };
 
   const handleLogout = async () => {
     try {
@@ -98,7 +146,6 @@ export default function Dashboard() {
   const handlePermanentDelete = async (id: number) => {
     try {
       const toastId = toast.loading('Permanently deleting email...');
-      
       const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/email/${id}/permanent`, {
         method: 'DELETE',
         credentials: 'include'
@@ -121,9 +168,7 @@ export default function Dashboard() {
 
   const handleDeleteEmail = async (id: number) => {
     try {
-      // Show loading toast
       const toastId = toast.loading('Moving email to trash...');
-      
       const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/email/${id}`, {
         method: 'DELETE',
         credentials: 'include'
@@ -131,24 +176,19 @@ export default function Dashboard() {
   
       if (response.ok) {
         const data = await response.json();
-        
-        // Update the UI
         setEmails(prev => prev.filter(email => email.id !== id));
-        setTrashEmails(prev => [data, ...prev]); // Add the deleted email to trash
+        setTrashEmails(prev => [data, ...prev]);
         setStats(prev => ({ 
           ...prev, 
           sent: prev.sent - 1,
           trash: prev.trash + 1 
         }));
-        
-        // Update toast to success
         toast.success('Email moved to trash successfully!', { id: toastId });
       } else {
         const errorData = await response.json();
         throw new Error(errorData.error || 'Failed to move email to trash');
       }
     } catch (error) {
-      // Show error toast
       toast.error(error instanceof Error ? error.message : 'Failed to move email to trash');
       console.error('Delete failed:', error);
     }
@@ -173,14 +213,12 @@ export default function Dashboard() {
   };
 
   const handleAddUserSuccess = () => {
-    // Refresh users list
     fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/users`)
       .then(res => res.json())
       .then(data => {
         setUsers(data);
         setStats(prev => ({ ...prev, users: prev.users + 1 }));
       });
-    
     toast.success('User created successfully');
     setIsAddAccountOpen(false);
   };
@@ -195,25 +233,22 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Modals */}
       <AddAccountModal 
         isOpen={isAddAccountOpen}
         onClose={() => setIsAddAccountOpen(false)}
         onSuccess={handleAddUserSuccess}
       />
 
-
-        <ComposeModal 
+      <ComposeModal 
         isOpen={isComposeOpen}
         onClose={() => setIsComposeOpen(false)}
         onSend={(newEmail: Email) => {
-            setEmails(prev => [newEmail, ...prev]);
-            setStats(prev => ({ ...prev, sent: prev.sent + 1 }));
-            toast.success('Email sent successfully!');
+          setEmails(prev => [newEmail, ...prev]);
+          setStats(prev => ({ ...prev, sent: prev.sent + 1 }));
+          toast.success('Email sent successfully!');
         }}
-        />
+      />
 
-      {/* Header - make it more responsive */}
       <header className="bg-[#0d404f] text-white shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center py-4">
@@ -230,13 +265,23 @@ export default function Dashboard() {
             
             <div className="flex items-center space-x-2 md:space-x-4">
               <div className="hidden md:flex items-center space-x-4">
-                {/* Desktop buttons */}
                 <button 
                   onClick={() => setIsAddAccountOpen(true)}
                   className="flex items-center text-sm hover:text-[#ff795f] transition-colors"
                 >
                   <UserPlus className="w-4 h-4 mr-1" />
                   <span className="hidden sm:inline">Add Account</span>
+                </button>
+
+                <button 
+                  onClick={() => {
+                    setIsSmtpModalOpen(true);
+                    fetchSmtpCredentials();
+                  }}
+                  className="flex items-center text-sm hover:text-[#ff795f] transition-colors"
+                >
+                  <Server className="w-4 h-4 mr-1" />
+                  <span className="hidden sm:inline">SMTP</span>
                 </button>
                 
                 <button 
@@ -258,7 +303,6 @@ export default function Dashboard() {
             </div>
           </div>
           
-          {/* Mobile menu */}
           {mobileMenuOpen && (
             <div className="md:hidden pb-4">
               <div className="pt-4 border-t border-[#1a5a6a]">
@@ -272,6 +316,18 @@ export default function Dashboard() {
                   >
                     <UserPlus className="w-4 h-4 mr-2" />
                     Add Account
+                  </button>
+
+                  <button 
+                    onClick={() => {
+                      setIsSmtpModalOpen(true);
+                      fetchSmtpCredentials();
+                      setMobileMenuOpen(false);
+                    }}
+                    className="flex items-center text-sm hover:text-[#ff795f] transition-colors"
+                  >
+                    <Server className="w-4 h-4 mr-2" />
+                    SMTP Settings
                   </button>
                   
                   <button 
@@ -289,12 +345,9 @@ export default function Dashboard() {
         </div>
       </header>
 
-      {/* Main Content - make tables responsive */}
       <main className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-8 py-4 sm:py-6 lg:py-8">
-        {/* Stats Cards */}
         <div className="mb-6">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            {/* Sent Emails Card */}
             <div 
               onClick={() => setActiveTab('sent')} 
               className={`bg-white overflow-hidden shadow rounded-lg cursor-pointer transition-all ${activeTab === 'sent' ? 'ring-2 ring-[#ff795f]' : ''}`}
@@ -316,7 +369,6 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* Users Card */}
             <div 
               onClick={() => setActiveTab('users')} 
               className={`bg-white overflow-hidden shadow rounded-lg cursor-pointer transition-all ${activeTab === 'users' ? 'ring-2 ring-[#ff795f]' : ''}`}
@@ -338,7 +390,6 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* Trash Card */}
             <div 
               onClick={() => setActiveTab('trash')} 
               className={`bg-white overflow-hidden shadow rounded-lg cursor-pointer transition-all ${activeTab === 'trash' ? 'ring-2 ring-[#ff795f]' : ''}`}
@@ -362,7 +413,6 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Content based on active tab */}
         {activeTab === 'sent' && (
           <>
             <div className="mb-4 flex justify-end">
@@ -473,61 +523,67 @@ export default function Dashboard() {
           </div>
         )}
 
-{activeTab === 'trash' && (
-  <div className="bg-white shadow overflow-hidden rounded-lg">
-    <div className="overflow-x-auto">
-    <table className="min-w-full divide-y divide-gray-200">
-        <thead className="bg-gray-50">
-          <tr>
-            <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">To</th>
-            <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Subject</th>
-            <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
-            <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Deleted On</th>
-            <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-          </tr>
-        </thead>
-        <tbody className="bg-white divide-y divide-gray-200">
-          {trashEmails.length > 0 ? (
-            trashEmails.map((email) => (
-              <tr key={email.id}>
-                <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-500 max-w-[120px] truncate">
-                  {Array.isArray(email.to) ? email.to.join(', ') : email.to}
-                </td>
-                <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-900 max-w-[150px] truncate">
-                  {email.subject}
-                </td>
-                <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {new Date(email.createdAt).toLocaleDateString()}
-                </td>
-                <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {new Date(email.updatedAt).toLocaleDateString()}
-                </td>
-
-                <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-500">
-                  <button 
-                    onClick={() => handlePermanentDelete(email.id)}
-                    className="text-red-600 hover:text-red-900"
-                    title="Permanently Delete"
-                  >
-                    <Trash2 className="w-5 h-5" />
-                  </button>
-                </td>
-
-              </tr>
-            ))
-          ) : (
-            <tr>
-              <td colSpan={4} className="px-3 py-4 text-center text-sm text-gray-500">
-                Trash is empty
-              </td>
-            </tr>
-          )}
-        </tbody>
-      </table>
-    </div>
-  </div>
-)}
+        {activeTab === 'trash' && (
+          <div className="bg-white shadow overflow-hidden rounded-lg">
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">To</th>
+                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Subject</th>
+                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Deleted On</th>
+                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {trashEmails.length > 0 ? (
+                    trashEmails.map((email) => (
+                      <tr key={email.id}>
+                        <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-500 max-w-[120px] truncate">
+                          {Array.isArray(email.to) ? email.to.join(', ') : email.to}
+                        </td>
+                        <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-900 max-w-[150px] truncate">
+                          {email.subject}
+                        </td>
+                        <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {new Date(email.createdAt).toLocaleDateString()}
+                        </td>
+                        <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {new Date(email.updatedAt).toLocaleDateString()}
+                        </td>
+                        <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-500">
+                          <button 
+                            onClick={() => handlePermanentDelete(email.id)}
+                            className="text-red-600 hover:text-red-900"
+                            title="Permanently Delete"
+                          >
+                            <Trash2 className="w-5 h-5" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={4} className="px-3 py-4 text-center text-sm text-gray-500">
+                        Trash is empty
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
       </main>
+
+      <SmtpModal 
+  isOpen={isSmtpModalOpen} 
+  onClose={() => {
+    setIsSmtpModalOpen(false);
+    setIsEditing(false);
+  }} 
+/>
     </div>
   );
 }
