@@ -14,6 +14,7 @@ export default function ComposeModal({ isOpen, onClose, onSend }: ComposeModalPr
   const [formData, setFormData] = useState({
     from: 'donations@rtnewworld.com',
     to: [''],
+    bcc: [''],
     subject: '',
     body: '',
     ctas: [{ text: '', link: '' }],
@@ -38,6 +39,21 @@ export default function ComposeModal({ isOpen, onClose, onSend }: ComposeModalPr
       ...prev,
       senderInfo: { ...prev.senderInfo, [name]: value }
     }));
+  };
+
+  const handleBccChange = (index: number, value: string) => {
+    const newBcc = [...formData.bcc];
+    newBcc[index] = value;
+    setFormData(prev => ({ ...prev, bcc: newBcc }));
+  };
+  
+  const addBccRecipient = () => {
+    setFormData(prev => ({ ...prev, bcc: [...prev.bcc, ''] }));
+  };
+  
+  const removeBccRecipient = (index: number) => {
+    const newBcc = formData.bcc.filter((_, i) => i !== index);
+    setFormData(prev => ({ ...prev, bcc: newBcc }));
   };
 
   const handleRecipientChange = (index: number, value: string) => {
@@ -76,30 +92,31 @@ export default function ComposeModal({ isOpen, onClose, onSend }: ComposeModalPr
   
     // Validate required fields
     if (!formData.from || !formData.subject || !formData.body || 
-        formData.to.some(t => !t) || formData.ctas.some(c => !c.text || !c.link)) {
-      setError('Please fill all required fields');
-      toast.error('Please fill all required fields');
-      return;
-    }
-  
-    try {
-      setIsSending(true);
-      
-      // Show loading toast
-      const toastId = toast.loading('Sending email...');
-      
-      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/email/send`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include',
-        body: JSON.stringify({
-          ...formData,
-          to: formData.to.filter(t => t.trim() !== '') // Remove empty recipients
-        })
-      });
-  
+      formData.to.some(t => !t) || formData.ctas.some(c => !c.text || !c.link)) {
+    setError('Please fill all required fields');
+    toast.error('Please fill all required fields');
+    return;
+  }
+
+  try {
+    setIsSending(true);
+    
+    const toastId = toast.loading('Sending email...');
+    
+    const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/email/send`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+      body: JSON.stringify({
+        ...formData,
+        to: formData.to.filter(t => t.trim() !== ''), // Remove empty recipients
+        bcc: formData.bcc.filter(b => b.trim() !== '') // Remove empty BCCs
+      })
+    });
+
+ 
       const data = await response.json();
   
       if (!response.ok) {
@@ -195,6 +212,49 @@ export default function ComposeModal({ isOpen, onClose, onSend }: ComposeModalPr
             >
               <Plus className="w-4 h-4 mr-1" />
               Add Recipient
+            </button>
+          </div>
+
+          {/* BCC Field - Multiple Recipients */}
+          <div>
+          <div className="flex items-center gap-2">
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            BCC (Blind Carbon Copy)
+          </label>
+          <div className="group relative">
+            <span className="text-gray-400 hover:text-gray-600 cursor-help">ⓘ</span>
+            <div className="absolute z-10 hidden group-hover:block w-64 p-2 text-xs bg-gray-800 text-white rounded shadow-lg">
+              BCC recipients will receive the email but won't be visible to other recipients
+            </div>
+          </div>
+        </div>
+            {formData.bcc.map((recipient, index) => (
+              <div key={index} className="flex mb-2">
+                <input
+                  type="email"
+                  value={recipient}
+                  onChange={(e) => handleBccChange(index, e.target.value)}
+                  className="flex-1 border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-[#ff795f] focus:border-[#ff795f]"
+                  placeholder="hidden_recipient@example.com"
+                />
+                {formData.bcc.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => removeBccRecipient(index)}
+                    className="ml-2 text-red-500 hover:text-red-700"
+                  >
+                    Remove
+                  </button>
+                )}
+              </div>
+            ))}
+            <button
+              type="button"
+              onClick={addBccRecipient}
+              className="mt-2 text-sm text-[#0d404f] hover:text-[#ff795f] flex items-center"
+            >
+              <Plus className="w-4 h-4 mr-1" />
+              Add BCC Recipient
             </button>
           </div>
 
