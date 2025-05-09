@@ -1,8 +1,9 @@
 'use client';
 import { useRef, useState } from 'react';
-import { Send, Plus, X, Upload } from 'lucide-react';
+import { Send, Plus, X, Upload, File, ImageDown } from 'lucide-react';
 import { Email } from '@/app/types';
 import toast from 'react-hot-toast';
+import Image from 'next/image';
 
 interface ComposeModalProps {
   isOpen: boolean;
@@ -23,13 +24,49 @@ export default function ComposeModal({ isOpen, onClose, onSend }: ComposeModalPr
       position: '',
       email: '',
       phone: ''
-    }
+    },
+    attachments: [] as Array<{ name: string; type: string; content: string }>
   });
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const BccfileInputRef = useRef<HTMLInputElement>(null);
 
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+  
+    const newAttachments = [...formData.attachments];
+    
+    Array.from(files).forEach(file => {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        if (event.target?.result) {
+          const content = event.target.result.toString().split(',')[1]; // Get base64 part
+          newAttachments.push({
+            name: file.name,
+            type: file.type,
+            content: content
+          });
+          
+          setFormData(prev => ({
+            ...prev,
+            attachments: newAttachments
+          }));
+        }
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const removeAttachment = (index: number) => {
+    const newAttachments = formData.attachments.filter((_, i) => i !== index);
+    setFormData(prev => ({
+      ...prev,
+      attachments: newAttachments
+    }));
+  };
 
   const handleChange = (e:any) => {
     const { name, value } = e.target;
@@ -366,6 +403,67 @@ export default function ComposeModal({ isOpen, onClose, onSend }: ComposeModalPr
               placeholder="Dear Compassionate Supporter,..."
             />
           </div>
+
+          <div className="border-t pt-6">
+  <h3 className="text-lg font-medium text-[#0d404f] mb-4">Attachments</h3>
+  
+  {/* File upload input */}
+  <div className="mb-4">
+    <label className="block text-sm font-medium text-gray-700 mb-2">
+      Add Attachments
+    </label>
+    <div className="flex items-center">
+      <label className="cursor-pointer bg-white py-2 px-3 border border-gray-300 rounded-md shadow-sm text-sm leading-4 font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#ff795f]">
+        <input
+          type="file"
+          multiple
+          onChange={handleFileUpload}
+          className="hidden"
+          accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt"
+        />
+        Select Files
+      </label>
+      <span className="ml-3 text-sm text-gray-500">
+        Supports images, PDFs, and documents
+      </span>
+    </div>
+  </div>
+
+  {/* Attachments preview */}
+  {formData.attachments.length > 0 && (
+    <div className="space-y-2">
+      <h4 className="text-sm font-medium text-gray-700">Selected Files:</h4>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        {formData.attachments.map((attachment, index) => (
+          <div key={index} className="flex items-center p-2 border rounded-md bg-gray-50">
+            <div className="flex-shrink-0 mr-3">
+              {attachment.type.startsWith('image/') ? (
+                <ImageDown className="h-8 w-8 text-[#0d404f]" />
+              ) : (
+                <File className="h-8 w-8 text-[#0d404f]" />
+              )}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-gray-900 truncate">
+                {attachment.name}
+              </p>
+              <p className="text-xs text-gray-500">
+                {attachment.type.split('/')[1]?.toUpperCase() || 'FILE'}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => removeAttachment(index)}
+              className="ml-2 text-red-500 hover:text-red-700"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  )}
+</div>
 
           {/* Call-to-Action Buttons */}
           <div>
