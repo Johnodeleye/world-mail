@@ -1,6 +1,6 @@
 'use client';
-import { useState } from 'react';
-import { Send, Plus, X } from 'lucide-react';
+import { useRef, useState } from 'react';
+import { Send, Plus, X, Upload } from 'lucide-react';
 import { Email } from '@/app/types';
 import toast from 'react-hot-toast';
 
@@ -27,6 +27,9 @@ export default function ComposeModal({ isOpen, onClose, onSend }: ComposeModalPr
   });
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const BccfileInputRef = useRef<HTMLInputElement>(null);
+
 
   const handleChange = (e:any) => {
     const { name, value } = e.target;
@@ -85,6 +88,46 @@ export default function ComposeModal({ isOpen, onClose, onSend }: ComposeModalPr
     const newCtas = formData.ctas.filter((_, i) => i !== index);
     setFormData(prev => ({ ...prev, ctas: newCtas }));
   };
+
+    // New handler for file import
+    const handleFileImport = (e: React.ChangeEvent<HTMLInputElement>, field: 'to' | 'bcc') => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+  
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        try {
+          const content = event.target?.result as string;
+          // Split by new lines and filter out empty lines
+          const emails = content
+            .split('\n')
+            .map(email => email.trim())
+            .filter(email => email !== '' && email.includes('@')); // Basic email validation
+          
+          if (emails.length === 0) {
+            toast.error('No valid emails found in the file');
+            return;
+          }
+  
+          // Update the appropriate field (to or bcc)
+          setFormData(prev => ({
+            ...prev,
+            [field]: [...prev[field], ...emails]
+          }));
+  
+          toast.success(`Imported ${emails.length} emails to ${field.toUpperCase()}`);
+        } catch (err) {
+          toast.error('Failed to parse file');
+        } finally {
+          // Reset file input
+          if (fileInputRef.current) {
+            fileInputRef.current.value = '';
+          }
+        }
+      };
+      reader.readAsText(file);
+    };
+  
 
   const handleSubmit = async (e: any) => {
     e.preventDefault();
@@ -181,9 +224,26 @@ export default function ComposeModal({ isOpen, onClose, onSend }: ComposeModalPr
 
           {/* To Field - Multiple Recipients */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              To *
-            </label>
+    <div className="flex justify-between items-center mb-1">
+      <label className="block text-sm font-medium text-gray-700">
+        To *
+      </label>
+      <button
+        type="button"
+        onClick={() => fileInputRef.current?.click()}
+        className="text-sm text-[#0d404f] hover:text-[#ff795f] flex items-center"
+      >
+        <Upload className="w-4 h-4 mr-1" />
+        Import List
+      </button>
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={(e) => handleFileImport(e, 'to')}
+        accept=".txt,.csv"
+        className="hidden"
+      />
+    </div>
             {formData.to.map((recipient, index) => (
               <div key={index} className="flex mb-2">
                 <input
@@ -217,17 +277,34 @@ export default function ComposeModal({ isOpen, onClose, onSend }: ComposeModalPr
 
           {/* BCC Field - Multiple Recipients */}
           <div>
-          <div className="flex items-center gap-2">
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            BCC (Blind Carbon Copy)
-          </label>
-          <div className="group relative">
-            <span className="text-gray-400 hover:text-gray-600 cursor-help">ⓘ</span>
-            <div className="absolute z-10 hidden group-hover:block w-64 p-2 text-xs bg-gray-800 text-white rounded shadow-lg">
-              BCC recipients will receive the email but won't be visible to other recipients
-            </div>
+    <div className="flex justify-between items-center">
+      <div className="flex items-center gap-2">  
+        <label className="block text-sm font-medium text-gray-700 mb-1">
+          BCC (Blind Carbon Copy)
+        </label>
+        <div className="group relative">
+          <span className="text-gray-400 hover:text-gray-600 cursor-help">ⓘ</span>
+          <div className="absolute z-10 hidden group-hover:block w-64 p-2 text-xs bg-gray-800 text-white rounded shadow-lg">
+            BCC recipients will receive the email but won't be visible to other recipients
           </div>
         </div>
+      </div>
+      <button
+        type="button"
+        onClick={() => BccfileInputRef.current?.click()}
+        className="text-sm text-[#0d404f] hover:text-[#ff795f] flex items-center"
+      >
+        <Upload className="w-4 h-4 mr-1" />
+        Import List
+      </button>
+      <input
+        type="file"
+        ref={BccfileInputRef}
+        onChange={(e) => handleFileImport(e, 'bcc')}
+        accept=".txt,.csv"
+        className="hidden"
+      />
+    </div>
             {formData.bcc.map((recipient, index) => (
               <div key={index} className="flex mb-2">
                 <input
