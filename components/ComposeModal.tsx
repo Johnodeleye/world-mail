@@ -11,6 +11,13 @@ interface ComposeModalProps {
   onSend: (newEmail: Email) => void;
 }
 
+interface Attachment {
+  name: string;
+  type: string;
+  content: string;
+  cid?: string; 
+}
+
 export default function ComposeModal({ isOpen, onClose, onSend }: ComposeModalProps) {
   const [formData, setFormData] = useState({
     from: 'donations@rtnewworld.com',
@@ -25,7 +32,7 @@ export default function ComposeModal({ isOpen, onClose, onSend }: ComposeModalPr
       email: '',
       phone: ''
     },
-    attachments: [] as Array<{ name: string; type: string; content: string }>
+     attachments: [] as Attachment[]
   });
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState('');
@@ -43,8 +50,8 @@ const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const reader = new FileReader();
     reader.onload = (event) => {
       if (event.target?.result) {
-        const content = event.target.result.toString().split(',')[1]; // Get base64 part
-        const attachment = {
+        const content = event.target.result.toString().split(',')[1];
+        const attachment: Attachment = { // Explicitly type the attachment
           name: file.name,
           type: file.type,
           content: content
