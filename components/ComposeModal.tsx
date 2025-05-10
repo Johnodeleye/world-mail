@@ -33,32 +33,39 @@ export default function ComposeModal({ isOpen, onClose, onSend }: ComposeModalPr
   const BccfileInputRef = useRef<HTMLInputElement>(null);
 
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
+const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const files = e.target.files;
+  if (!files || files.length === 0) return;
+
+  const newAttachments = [...formData.attachments];
   
-    const newAttachments = [...formData.attachments];
-    
-    Array.from(files).forEach(file => {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        if (event.target?.result) {
-          const content = event.target.result.toString().split(',')[1]; // Get base64 part
-          newAttachments.push({
-            name: file.name,
-            type: file.type,
-            content: content
-          });
-          
-          setFormData(prev => ({
-            ...prev,
-            attachments: newAttachments
-          }));
+  Array.from(files).forEach(file => {
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      if (event.target?.result) {
+        const content = event.target.result.toString().split(',')[1]; // Get base64 part
+        const attachment = {
+          name: file.name,
+          type: file.type,
+          content: content
+        };
+        
+        // Add CID only for images
+        if (file.type.startsWith('image/')) {
+          attachment.cid = `image_${Math.random().toString(36).substr(2, 9)}`;
         }
-      };
-      reader.readAsDataURL(file);
-    });
-  };
+        
+        newAttachments.push(attachment);
+        
+        setFormData(prev => ({
+          ...prev,
+          attachments: newAttachments
+        }));
+      }
+    };
+    reader.readAsDataURL(file);
+  });
+};
 
   const removeAttachment = (index: number) => {
     const newAttachments = formData.attachments.filter((_, i) => i !== index);
